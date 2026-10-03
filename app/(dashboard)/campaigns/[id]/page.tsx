@@ -51,6 +51,8 @@ interface Campaign {
     skipped: number;
     failed: number;
     clicks: number;
+    people: number;
+    completed: number;
     ctr: number;
   };
 }
@@ -165,6 +167,10 @@ export default function CampaignDetailPage() {
   const metrics = [
     { label: t("Sends"), value: campaign.analytics.sent },
     { label: t("Clicks"), value: campaign.analytics.clicks },
+    {
+      label: t("Completed"),
+      value: `${campaign.analytics.completed} / ${campaign.analytics.people}`,
+    },
     { label: t("CTR"), value: `${campaign.analytics.ctr}%` },
     { label: t("Failed"), value: campaign.analytics.failed },
   ];
@@ -326,7 +332,7 @@ export default function CampaignDetailPage() {
         </div>
 
         {tab === "insights" && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
             {metrics.map((m) => (
               <div key={m.label} className="panel rounded p-4">
                 <p className="text-sm text-muted">{m.label}</p>

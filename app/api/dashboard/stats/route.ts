@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserId, getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
 import {
-  calculateCtr,
+  countUniqueClickers,
   normalizeTopKeywords,
   summarizeDmStatuses,
+  summarizeFunnel,
 } from "@/lib/tracking/analytics";
 
 export async function GET(request: NextRequest) {
@@ -186,6 +187,29 @@ export async function GET(request: NextRequest) {
     }))
   );
 
+  // CTR per person: people DMed this month vs. people who opened a link.
+  const [monthPeopleRows, monthClickRows] = await Promise.all([
+    prisma.dmLog.findMany({
+      where: {
+        workspaceId,
+        status: "SENT",
+        createdAt: { gte: monthStart },
+        ...accountFilter,
+      },
+      distinct: ["commenterId"],
+      select: { commenterId: true },
+    }),
+    prisma.linkClick.findMany({
+      where: { workspaceId, createdAt: { gte: monthStart }, ...accountFilter },
+      distinct: ["recipientKey", "ipHash"],
+      select: { id: true, recipientKey: true, ipHash: true },
+    }),
+  ]);
+  const monthFunnel = summarizeFunnel(
+    monthPeopleRows.length,
+    countUniqueClickers(monthClickRows)
+  );
+
   const firstName =
     user?.name?.trim().split(/\s+/)[0] ||
     user?.email?.split("@")[0] ||
@@ -210,7 +234,9 @@ export async function GET(request: NextRequest) {
       totalDMs,
       clicksThisMonth,
       totalClicks,
-      ctrThisMonth: calculateCtr(clicksThisMonth, dmsSentMonth),
+      ctrThisMonth: monthFunnel.ctr,
+      peopleThisMonth: monthFunnel.people,
+      completedThisMonth: monthFunnel.completed,
       topKeywords,
       dailyDMs,
       recentLogs,

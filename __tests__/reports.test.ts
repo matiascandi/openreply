@@ -8,10 +8,12 @@ const { mockPrisma } = vi.hoisted(() => ({
     dmLog: {
       groupBy: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       count: vi.fn(),
     },
     linkClick: {
       count: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -69,6 +71,19 @@ beforeEach(() => {
     createdAt: new Date("2026-05-20T12:00:00.000Z"),
   });
   mockPrisma.dmLog.count.mockResolvedValue(2);
+  // 10 people were DMed; 6 of them opened the link (one twice, one untagged).
+  mockPrisma.dmLog.findMany.mockResolvedValue(
+    Array.from({ length: 10 }, (_, i) => ({ commenterId: `user_${i}` }))
+  );
+  mockPrisma.linkClick.findMany.mockResolvedValue([
+    { id: "c1", recipientKey: "aaaaaaaaaaaaaaaa", ipHash: "ip1" },
+    { id: "c2", recipientKey: "aaaaaaaaaaaaaaaa", ipHash: "ip2" },
+    { id: "c3", recipientKey: "bbbbbbbbbbbbbbbb", ipHash: "ip3" },
+    { id: "c4", recipientKey: "cccccccccccccccc", ipHash: "ip4" },
+    { id: "c5", recipientKey: "dddddddddddddddd", ipHash: "ip5" },
+    { id: "c6", recipientKey: "eeeeeeeeeeeeeeee", ipHash: "ip6" },
+    { id: "c7", recipientKey: null, ipHash: "ip7" },
+  ]);
 });
 
 describe("campaign reports", () => {
@@ -88,6 +103,8 @@ describe("campaign reports", () => {
         skipped: 2,
         failed: 1,
         clicks: 12,
+        people: 10,
+        completed: 6,
         ctr: 60,
       },
       topKeywords: [

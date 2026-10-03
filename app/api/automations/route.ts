@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { calculateCtr, normalizeTopKeywords } from "@/lib/tracking/analytics";
+import {
+  countUniqueClickers,
+  normalizeTopKeywords,
+  summarizeFunnel,
+} from "@/lib/tracking/analytics";
 import { buildTrackedUrl } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import {
@@ -180,7 +184,8 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  const [statusCounts, clickCounts, keywordCounts] = await Promise.all([
+  const [statusCounts, clickCounts, keywordCounts, recipientRows, clickRows] =
+    await Promise.all([
     prisma.dmLog.groupBy({
       by: ["automationId", "status"],
       where: { workspaceId },
@@ -196,6 +201,17 @@ export async function GET(request: NextRequest) {
       where: { workspaceId, matchedKeyword: { not: null } },
       _count: { _all: true },
     }),
+    // One row per person a campaign has DMed, however many messages they got.
+    prisma.dmLog.findMany({
+      where: { workspaceId, status: "SENT" },
+      distinct: ["automationId", "commenterId"],
+      select: { automationId: true, commenterId: true },
+    }),
+    prisma.linkClick.findMany({
+      where: { workspaceId },
+      distinct: ["automationId", "recipientKey", "ipHash"],
+      select: { id: true, automationId: true, recipientKey: true, ipHash: true },
+    }),
   ]);
 
   const analytics = new Map<
@@ -205,6 +221,8 @@ export async function GET(request: NextRequest) {
       skipped: number;
       failed: number;
       clicks: number;
+      people: number;
+      completed: number;
       topKeywords: { keyword: string; count: number }[];
     }
   >();
@@ -215,8 +233,26 @@ export async function GET(request: NextRequest) {
       skipped: 0,
       failed: 0,
       clicks: 0,
+      people: 0,
+      completed: 0,
       topKeywords: [],
     });
+  }
+
+  for (const row of recipientRows) {
+    const item = analytics.get(row.automationId);
+    if (item) item.people += 1;
+  }
+
+  const clicksByAutomation = new Map<string, typeof clickRows>();
+  for (const row of clickRows) {
+    const list = clicksByAutomation.get(row.automationId) ?? [];
+    list.push(row);
+    clicksByAutomation.set(row.automationId, list);
+  }
+  for (const [automationId, rows] of clicksByAutomation) {
+    const item = analytics.get(automationId);
+    if (item) item.completed = countUniqueClickers(rows);
   }
 
   for (const row of statusCounts) {
@@ -256,6 +292,8 @@ export async function GET(request: NextRequest) {
         skipped: 0,
         failed: 0,
         clicks: 0,
+        people: 0,
+        completed: 0,
         topKeywords: [],
       };
 
@@ -270,7 +308,7 @@ export async function GET(request: NextRequest) {
           : null,
         analytics: {
           ...item,
-          ctr: calculateCtr(item.clicks, item.sent),
+          ...summarizeFunnel(item.people, item.completed),
         },
       };
     }),

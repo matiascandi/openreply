@@ -301,6 +301,9 @@ model LinkClick {
   instagramAccountId String
   trackedLinkId      String
   ipHash             String?
+  // Anonymous per-recipient key from the tracked URL (?r=), so clicks can be
+  // counted per person instead of per tap. Null for clicks on untagged links.
+  recipientKey       String?
   userAgent          String?
   referrer           String?
   createdAt          DateTime @default(now())
@@ -314,6 +317,7 @@ model LinkClick {
   @@index([automationId])
   @@index([instagramAccountId])
   @@index([trackedLinkId])
+  @@index([automationId, recipientKey])
   @@index([createdAt])
   @@index([workspaceId, createdAt])
 }

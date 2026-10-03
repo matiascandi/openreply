@@ -58,6 +58,8 @@ interface Campaign {
     skipped: number;
     failed: number;
     clicks: number;
+    people: number;
+    completed: number;
     ctr: number;
     topKeywords: { keyword: string; count: number }[];
   };
@@ -479,6 +481,11 @@ export default function CampaignsPage() {
                   <span>·</span>
                   <span className="font-medium text-foreground">
                     {auto.analytics.ctr}{t("% CTR")}
+                  </span>
+                  <span>·</span>
+                  <span className="font-medium text-foreground">
+                    {auto.analytics.completed} / {auto.analytics.people}{" "}
+                    {t("completed")}
                   </span>
                   <span>·</span>
                   <span>{auto.analytics.sent} {t("sent")}</span>

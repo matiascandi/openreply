@@ -23,3 +23,23 @@ export function getRequestIp(request: Request) {
     null
   );
 }
+
+const RECIPIENT_KEY_PATTERN = /^[a-f0-9]{16}$/;
+
+/**
+ * Anonymous, stable key for one DM recipient, appended to tracked links as
+ * ?r= so clicks can be counted per person. It is a hash, so the Instagram user
+ * id never appears in a URL.
+ */
+export function recipientKeyFor(userId: string | null | undefined) {
+  if (!userId) return null;
+  const salt = process.env.NEXTAUTH_SECRET ?? "campaigncue-click-salt";
+  return createHash("sha256")
+    .update(`${salt}:recipient:${userId}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+export function parseRecipientKey(value: string | null | undefined) {
+  return value && RECIPIENT_KEY_PATTERN.test(value) ? value : null;
+}

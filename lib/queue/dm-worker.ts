@@ -51,6 +51,7 @@ import {
   renderMessageWithoutLink,
 } from "@/lib/tracking/message";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
+import { recipientKeyFor } from "@/lib/tracking/server";
 
 import { ZernioApiError } from "@/lib/zernio/client";
 
@@ -147,10 +148,11 @@ type WorkerTrackedLink = {
  */
 function buildLinkButtons(
   trackedLinks: WorkerTrackedLink[],
-  primaryLabel: string | null
+  primaryLabel: string | null,
+  recipientKey?: string | null
 ): { title: string; url: string }[] {
   return trackedLinks.slice(0, 3).map((link, index) => ({
-    url: buildTrackedUrl(link.slug),
+    url: buildTrackedUrl(link.slug, undefined, recipientKey),
     title:
       (index === 0 ? primaryLabel : link.label) || link.label || "Open link",
   }));
@@ -165,14 +167,19 @@ function buildInlineLinkFallback(
   message: string,
   commenterName: string | null | undefined,
   trackedLinks: WorkerTrackedLink[],
-  bodyText: string
+  bodyText: string,
+  recipientKey?: string | null
 ): string {
   const base =
-    renderMessageWithTracking({ message, commenterName, trackedLinks }) ||
-    bodyText;
+    renderMessageWithTracking({
+      message,
+      commenterName,
+      trackedLinks,
+      recipientKey,
+    }) || bodyText;
   const extraUrls = trackedLinks
     .slice(1)
-    .map((link) => buildTrackedUrl(link.slug));
+    .map((link) => buildTrackedUrl(link.slug, undefined, recipientKey));
   return extraUrls.length > 0 ? `${base}\n${extraUrls.join("\n")}` : base;
 }
 
@@ -201,6 +208,7 @@ async function sendRevealDirectMessage({
   commenterName: string | null;
   context: string;
 }): Promise<void> {
+  const recipientKey = recipientKeyFor(userId);
   if (automation.trackedLinks.length === 0) {
     await sendDirectMessage({
       context: accessToken,
@@ -210,6 +218,7 @@ async function sendRevealDirectMessage({
         message: automation.dmMessage,
         commenterName,
         trackedLinks: automation.trackedLinks,
+        recipientKey,
       }),
     });
     return;
@@ -223,7 +232,8 @@ async function sendRevealDirectMessage({
     }) || "Here's your link:";
   const buttons = buildLinkButtons(
     automation.trackedLinks,
-    automation.linkButtonLabel
+    automation.linkButtonLabel,
+    recipientKey
   );
 
   try {
@@ -252,7 +262,8 @@ async function sendRevealDirectMessage({
           automation.dmMessage,
           commenterName,
           automation.trackedLinks,
-          bodyText
+          bodyText,
+          recipientKey
         ),
       });
     } catch (fallbackError) {
@@ -695,7 +706,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           }) || "Here's your link:";
         const buttons = buildLinkButtons(
           automation.trackedLinks,
-          automation.linkButtonLabel
+          automation.linkButtonLabel,
+          recipientKeyFor(commenterId)
         );
 
         try {
@@ -721,7 +733,8 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             automation.dmMessage,
             commenterName,
             automation.trackedLinks,
-            bodyText
+            bodyText,
+            recipientKeyFor(commenterId)
           );
           try {
             await sendPrivateReply({
@@ -740,6 +753,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           message: automation.dmMessage,
           commenterName,
           trackedLinks: automation.trackedLinks,
+          recipientKey: recipientKeyFor(commenterId),
         });
         await sendPrivateReply({
           context: accessToken,

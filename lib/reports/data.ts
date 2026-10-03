@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db/client";
 import type { Locale } from "@/lib/i18n";
 import {
-  calculateCtr,
+  countUniqueClickers,
   normalizeTopKeywords,
   summarizeDmStatuses,
+  summarizeFunnel,
 } from "@/lib/tracking/analytics";
 import { TRACKED_LINK_ORDER } from "@/lib/tracking/link-order";
 import { buildReportUrl, isReportBranded } from "@/lib/reports/share";
@@ -70,7 +71,7 @@ export async function getCampaignReportBySlug(shareSlug: string, locale: Locale 
     return null;
   }
 
-  const [statusRows, clickCount, keywordRows, latestSentLog] =
+  const [statusRows, clickCount, keywordRows, latestSentLog, peopleRows, clickRows] =
     await Promise.all([
       prisma.dmLog.groupBy({
         by: ["status"],
@@ -104,7 +105,25 @@ export async function getCampaignReportBySlug(shareSlug: string, locale: Locale 
         orderBy: { dmSentAt: "desc" },
         select: { dmSentAt: true, createdAt: true },
       }),
+      prisma.dmLog.findMany({
+        where: {
+          workspaceId: automation.workspaceId,
+          automationId: automation.id,
+          status: "SENT",
+        },
+        distinct: ["commenterId"],
+        select: { commenterId: true },
+      }),
+      prisma.linkClick.findMany({
+        where: {
+          workspaceId: automation.workspaceId,
+          automationId: automation.id,
+        },
+        distinct: ["recipientKey", "ipHash"],
+        select: { id: true, recipientKey: true, ipHash: true },
+      }),
     ]);
+  const funnel = summarizeFunnel(peopleRows.length, countUniqueClickers(clickRows));
 
   const statusSummary = summarizeDmStatuses(
     statusRows.map((row) => ({
@@ -174,7 +193,9 @@ export async function getCampaignReportBySlug(shareSlug: string, locale: Locale 
       skipped: statusSummary.skipped,
       failed: statusSummary.failed,
       clicks: clickCount,
-      ctr: calculateCtr(clickCount, statusSummary.sent),
+      ctr: funnel.ctr,
+      people: funnel.people,
+      completed: funnel.completed,
       latestSentAt: latestSentLog?.dmSentAt ?? latestSentLog?.createdAt ?? null,
     },
     topKeywords,

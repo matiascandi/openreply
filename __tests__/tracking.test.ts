@@ -110,3 +110,42 @@ describe("campaign analytics helpers", () => {
     ]);
   });
 });
+
+import {
+  countUniqueClickers,
+  summarizeFunnel,
+} from "../lib/tracking/analytics";
+import { parseRecipientKey, recipientKeyFor } from "../lib/tracking/server";
+import { buildTrackedUrl as buildUrl } from "../lib/tracking/message";
+
+describe("per-person funnel", () => {
+  it("counts a person once however many times they click", () => {
+    expect(
+      countUniqueClickers([
+        { id: "1", recipientKey: "aaaaaaaaaaaaaaaa", ipHash: "x" },
+        { id: "2", recipientKey: "aaaaaaaaaaaaaaaa", ipHash: "y" },
+        { id: "3", recipientKey: null, ipHash: "z" },
+        { id: "4", recipientKey: null, ipHash: "z" },
+        { id: "5", recipientKey: null, ipHash: null },
+      ])
+    ).toBe(3);
+  });
+
+  it("computes CTR as people who clicked over people DMed, capped", () => {
+    expect(summarizeFunnel(1, 1)).toEqual({ people: 1, completed: 1, ctr: 100 });
+    expect(summarizeFunnel(3, 2)).toEqual({ people: 3, completed: 2, ctr: 66.7 });
+    expect(summarizeFunnel(1, 4)).toEqual({ people: 1, completed: 1, ctr: 100 });
+    expect(summarizeFunnel(0, 0)).toEqual({ people: 0, completed: 0, ctr: 0 });
+  });
+
+  it("tags tracked URLs with a stable, anonymous recipient key", () => {
+    const key = recipientKeyFor("17841400000000000");
+    expect(key).toMatch(/^[a-f0-9]{16}$/);
+    expect(recipientKeyFor("17841400000000000")).toBe(key);
+    expect(key).not.toContain("1784140");
+    expect(buildUrl("abc", "https://x.app", key)).toBe(`https://x.app/r/abc?r=${key}`);
+    expect(buildUrl("abc", "https://x.app")).toBe("https://x.app/r/abc");
+    expect(parseRecipientKey(key)).toBe(key);
+    expect(parseRecipientKey("not-a-key")).toBeNull();
+  });
+});

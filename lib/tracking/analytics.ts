@@ -51,3 +51,34 @@ export function normalizeTopKeywords(rows: KeywordCountRow[], limit = 5) {
     .sort((a, b) => b.count - a.count || a.keyword.localeCompare(b.keyword))
     .slice(0, limit);
 }
+
+export interface ClickIdentityRow {
+  id: string;
+  recipientKey: string | null;
+  ipHash: string | null;
+}
+
+/**
+ * Number of distinct people behind a set of clicks. Tagged links (?r=) carry a
+ * per-recipient key; clicks from before tagging, or from a link opened without
+ * it, fall back to the hashed IP, and only then to the click itself.
+ */
+export function countUniqueClickers(rows: ClickIdentityRow[]) {
+  const people = new Set<string>();
+  for (const row of rows) {
+    if (row.recipientKey) people.add(`r:${row.recipientKey}`);
+    else if (row.ipHash) people.add(`ip:${row.ipHash}`);
+    else people.add(`click:${row.id}`);
+  }
+  return people.size;
+}
+
+/**
+ * Per-person funnel: how many distinct people got a DM from the campaign, and
+ * how many of them went on to open the link. CTR is completed ÷ people, so a
+ * person who received several messages counts once.
+ */
+export function summarizeFunnel(people: number, completed: number) {
+  const done = Math.min(completed, people);
+  return { people, completed: done, ctr: calculateCtr(done, people) };
+}
